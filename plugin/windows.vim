@@ -184,7 +184,15 @@ function! ShowInMonitorWindows(command)
   let height_ratio = 1.0 - g:monitor_window_height_ratio
   let height = str2float(&lines) * height_ratio
   execute "resize " . float2nr(height)
-  echo "height:" . float2nr(height)
+
+  call s:CheckMonitorWindows()
+  call s:MoveToWindowByWindowID(1)
+  let number_of_monitors = len(s:monitor_windows)
+  let monitor_width = (winwidth(0) - number_of_monitors) / number_of_monitors
+  for monitor_window in s:monitor_windows
+    execute monitor_window.window_nr_ . "wincmd w"
+    execute "vertical resize " . monitor_width
+  endfor
 
 endfunction
 function! TestShowInMonitorWindows()
