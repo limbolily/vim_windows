@@ -2,16 +2,6 @@
 " Maintainer: Limbo <limbonavel@gmail.com>
 " License: This file is placed in the public domain.
 
-if exists("g:loaded_windows")
-  finish
-endif
-let g:loaded_windows = 1
-
-" save compatible-options
-let s:save_cpo = &cpo
-" set vim default compatible-options
-set cpo&vim
-
 "This plugin manage windows.It dividds vim to 2 kind of windows:
 "1.Edition Windows:The main windows,contain text to edit with fixed width
 "(default to 80).
@@ -59,12 +49,37 @@ endfunction
 "NavigationWindow container
 let s:navigation_windows = []
 
+function! windows#Initialize()
+  "Assume no other windows before this script invoking.
+  "let edition_window = s:EditionWindow.New()
+  "let edition_sub_window = s:EditionSubWindow.New()
+  "let edition_sub_window.window_id_ = s:windows_counter + 1
+  "call add(edition_window.sub_windows_, edition_sub_window)
+  "call add(s:edition_windows, edition_window)
+  autocmd BufWinEnter,VimEnter,WinEnter *
+    \ if !exists('w:window_id')
+    \|  let s:windows_counter += 1
+    \|  let w:window_id = s:windows_counter
+    \|endif
+
+  autocmd WinLeave *
+    \ call s:CleanUnavailableNavigationWindows()
+    \|call s:CleanUnavailableEditionWindows()
+endfunction
+
 "Put the buffer to navigation window.
 "If navigation_id is given,put the buffer to the specific navigation window.
 "The navigation_id ordered from top to bottom.
 "If navigation_id is not given or  the navigation window specified by
 "navigation_id doesn't exist,Create a new navigation window to show the buffer.
-function! ShowInNavigationWindows(buffer_name, ...)
+function! windows#ShowInNavigationWindows(buffer_name, ...)
+  let l:check_result = s:CheckEditionWindows()
+  if (l:check_result != 0)
+    return
+  endif
+
+  let l:current_window_id = getwinvar(0, 'window_id')
+
   let l:number_of_navigations = len(s:navigation_windows)
   if (a:0 != 0)
     let l:navigation_id = a:1
@@ -75,7 +90,9 @@ function! ShowInNavigationWindows(buffer_name, ...)
     call s:MoveToWindowByWindowID(
       \s:edition_windows[0].sub_windows_[0].window_id_)
     split
+    let s:windows_counter += 1
     let l:new_window_id = s:windows_counter
+    let w:window_id = l:new_window_id
     call s:MoveToWindowByWindowID(l:new_window_id)
     wincmd H
     execute "buffer! " a:buffer_name
@@ -84,10 +101,10 @@ function! ShowInNavigationWindows(buffer_name, ...)
     call add(s:navigation_windows, l:navigation_window)
   elseif (l:navigation_id < 0 || l:navigation_id >= l:number_of_navigations)
     call s:MoveToWindowByWindowID(s:navigation_windows[-1].window_id_)
-    belowright split
+    execute "belowright split " . a:buffer_name
+    let s:windows_counter += 1
     let l:new_window_id = s:windows_counter
-    call s:MoveToWindowByWindowID(l:new_window_id)
-    execute "buffer! " . a:buffer_name
+    let w:window_id = l:new_window_id
     let l:navigation_window = s:NavigationWindow.New()
     let l:navigation_window.window_id_ = l:new_window_id
     call add(s:navigation_windows, l:navigation_window)
@@ -97,23 +114,24 @@ function! ShowInNavigationWindows(buffer_name, ...)
     execute "buffer! " . a:buffer_name
   endif
 
-  call NormalizeWindowsSize()
+  call windows#NormalizeWindowsSize()
+  call s:MoveToWindowByWindowID(l:current_window_id)
 endfunction
 
-function! TestShowInNavigationWindows()
+function! windows#TestShowInNavigationWindows()
   NERDTree
   quit
-  call ShowInNavigationWindows("NERD_tree_1")
+  call windows#ShowInNavigationWindows("NERD_tree_1")
   TlistToggle
   wincmd h
   wincmd h
   setlocal bufhidden=hide
   quit
-  call ShowInNavigationWindows("__Tag_List__")
+  call windows#ShowInNavigationWindows("__Tag_List__")
   silent vsplit __TEST__
   setlocal buftype=nofile
   quit
-  call ShowInNavigationWindows("__TEST__")
+  call windows#ShowInNavigationWindows("__TEST__")
 endfunction
 
 "Put the buffer to edition windows.
@@ -125,7 +143,14 @@ endfunction
 "doesn't exist,create a new navigation window;if edition_sub_id is not given
 "or the sub edition window specified by edition_sub_id is not exist,Create a
 "new sub edition navigation window to show the buffer.
-function! ShowInEditionWindows(buffer_name, ...)
+function! windows#ShowInEditionWindows(buffer_name, ...)
+  let l:check_result = s:CheckEditionWindows()
+  if (l:check_result != 0)
+    return
+  endif
+
+  let l:current_window_id = getwinvar(0, 'window_id')
+
   let l:edition_id = -1
   let l:edition_sub_id = -1
   if (a:0 >= 1)
@@ -147,8 +172,10 @@ function! ShowInEditionWindows(buffer_name, ...)
       "Create new edition sub window
       let l:last_sub_window = l:edition_window.sub_windows_[-1]
       call s:MoveToWindowByWindowID(l:last_sub_window.window_id_)
-      belowright split
+      execute "belowright split "
+      let s:windows_counter += 1
       let l:new_window_id = s:windows_counter
+      let w:window_id = l:new_window_id
       call s:MoveToWindowByWindowID(l:new_window_id)
       execute "buffer! " . a:buffer_name
       let l:edition_sub_window = s:EditionSubWindow.New()
@@ -159,7 +186,9 @@ function! ShowInEditionWindows(buffer_name, ...)
     "create new edition window
     let l:edition_total_width = s:GetEditionWindowsTotalWidth()
     execute "belowright vsplit " . a:buffer_name
+    let s:windows_counter += 1
     let l:new_window_id = s:windows_counter
+    let w:window_id = l:new_window_id
     call s:MoveToWindowByWindowID(l:new_window_id)
     wincmd L
     let l:line_number_length = 0
@@ -179,45 +208,50 @@ function! ShowInEditionWindows(buffer_name, ...)
     endif
   endif
 
-  call NormalizeWindowsSize()
-
+  call windows#NormalizeWindowsSize()
+  call s:MoveToWindowByWindowID(l:current_window_id)
 endfunction
 
-function! TestShowInEditionWindows()
+function! windows#TestShowInEditionWindows()
   silent vsplit _TEST_EDITION_1_
   setlocal buftype=nofile
   setlocal bufhidden=hide
   execute "normal iedition1"
   quit
-  call ShowInEditionWindows("_TEST_EDITION_1_")
+  call windows#ShowInEditionWindows("_TEST_EDITION_1_")
   silent vsplit _TEST_EDITION_2_
   setlocal buftype=nofile
   setlocal bufhidden=hide
   execute "normal iedition2"
   quit
-  call ShowInEditionWindows("_TEST_EDITION_2_")
+  call windows#ShowInEditionWindows("_TEST_EDITION_2_")
   silent vsplit _TEST_EDITION_3_
   setlocal buftype=nofile
   setlocal bufhidden=hide
   execute "normal iedition3"
   quit
-  call ShowInEditionWindows("_TEST_EDITION_3_", 0)
+  call windows#ShowInEditionWindows("_TEST_EDITION_3_", 0)
   silent vsplit _TEST_EDITION_4_
   setlocal buftype=nofile
   setlocal bufhidden=hide
   execute "normal iedition4"
   quit
-  call ShowInEditionWindows("_TEST_EDITION_4_", 1, 1)
+  call windows#ShowInEditionWindows("_TEST_EDITION_4_", 1, 1)
   silent vsplit _TEST_EDITION_5_
   setlocal buftype=nofile
   setlocal bufhidden=hide
   execute "normal iedition5"
   quit
-  call ShowInEditionWindows("_TEST_EDITION_5_", 1, 1)
+  call windows#ShowInEditionWindows("_TEST_EDITION_5_", 1, 1)
 endfunction
 
 "Normalize all edition navigation monitor windows.
-function! NormalizeWindowsSize()
+function! windows#NormalizeWindowsSize()
+  let l:check_result = s:CheckEditionWindows()
+  if (l:check_result != 0)
+    return
+  endif
+
   let l:number_of_navigations = len(s:navigation_windows)
   "Normalize edition windows
   let l:number_of_editions = len(s:edition_windows)
@@ -297,7 +331,27 @@ function! s:GetEditionWindowsTotalWidth()
   return l:edition_total_width
 endfunction
 
-function s:CheckNavigationWindows()
+function! s:CheckEditionWindows()
+  if (len(s:edition_windows) > 0)
+    return 0
+  else
+    let [tabnr, winnr] = s:FindWindowID(1)
+    let edition_window = s:EditionWindow.New()
+    let edition_sub_window = s:EditionSubWindow.New()
+    if (winnr != 0)
+      let edition_sub_window.window_id_ = 1
+    elseif (winnr() > 0)
+      let edition_sub_window.window_id_ = getwinvar(0, 'window_id')
+    else
+      return -1
+    endif
+    call add(edition_window.sub_windows_, edition_sub_window)
+    call add(s:edition_windows, edition_window)
+    return 0
+  endif
+endfunction
+
+function! s:CleanUnavailableNavigationWindows()
   let number_of_removed = 0
   for i in range(len(s:navigation_windows))
     let id = i - number_of_removed
@@ -309,7 +363,7 @@ function s:CheckNavigationWindows()
   endfor
 endfunction
 
-function s:CheckEditionWindows()
+function! s:CleanUnavailableEditionWindows()
   let number_of_edition_removed = 0
   for i in range(len(s:edition_windows))
     let edition_id = i - number_of_edition_removed
@@ -362,26 +416,3 @@ function! s:EchoEditionWindows()
   endfor
 endfunction
 
-function! s:Initialize()
-  "Assume no other windows before this script invoking.
-  let edition_window = s:EditionWindow.New()
-  let edition_sub_window = s:EditionSubWindow.New()
-  let edition_sub_window.window_id_ = s:windows_counter + 1
-  call add(edition_window.sub_windows_, edition_sub_window)
-  call add(s:edition_windows, edition_window)
-endfunction
-
-call s:Initialize()
-
-autocmd VimEnter,WinEnter *
-  \ if !exists('w:window_id')
-  \|  let s:windows_counter += 1
-  \|  let w:window_id = s:windows_counter
-  \|endif
-
-autocmd WinLeave *
-  \ call s:CheckNavigationWindows()
-  \|call s:CheckEditionWindows()
-
-" restore compatible-options
-let &cpo = s:save_cpo
