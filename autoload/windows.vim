@@ -185,7 +185,7 @@ function! windows#ShowInEditionWindows(buffer_name, ...)
   else
     "create new edition window
     let l:edition_total_width = s:GetEditionWindowsTotalWidth()
-    execute "belowright vsplit " . a:buffer_name
+    execute "belowright vsplit! " . a:buffer_name
     let s:windows_counter += 1
     let l:new_window_id = s:windows_counter
     let w:window_id = l:new_window_id
