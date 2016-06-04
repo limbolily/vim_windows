@@ -12,9 +12,6 @@
 "edition window width
 let g:edition_window_width = 80
 
-"monitor window height ratio
-let g:monitor_window_height_ratio = 0.3
-
 "windows counter,identifies window uniquely
 let s:windows_counter = 0
 
@@ -158,6 +155,10 @@ function! windows#ShowInEditionWindows(buffer_name, ...)
   endif
   if (a:0 >= 2)
     let l:edition_sub_id = a:2
+  endif
+
+  if (l:edition_id == '%')
+    let l:edition_id = s:CurrentEditionID()
   endif
 
   if (l:edition_id >= 0 && l:edition_id < len(s:edition_windows))
@@ -415,4 +416,17 @@ function! s:EchoEditionWindows()
     endfor
   endfor
 endfunction
+
+function! s:CurrentEditionID()
+  let l:window_id = getwinvar(0, 'window_id')
+  for l:edition_id in range(0, len(s:edition_windows) - 1)
+    for l:edition_sub_window in s:edition_windows[edition_id].sub_windows_
+      if (l:edition_sub_window.window_id_ == l:window_id)
+        return l:edition_id
+      endif
+    endfor
+  endfor
+  return -1
+endfunction
+
 
